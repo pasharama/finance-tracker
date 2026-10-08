@@ -1,0 +1,150 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum TransactionType {
+  EXPENSE
+  INCOME
+  TRANSFER
+  REFUND
+  ADJUSTMENT
+}
+
+enum AccountType {
+  CASH
+  BANK
+  PAYPAY
+  SUICA
+  CREDIT_CARD
+  DEBIT_CARD
+  SAVINGS
+  OTHER
+}
+
+model User {
+  id           String               @id @default(uuid())
+  email        String               @unique
+  password      String? // Hash bcrypt
+  name         String?
+  image        String?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  profile      Profile?
+  accounts     Account[]
+  transactions Transaction[]
+  categories   Category[]
+  fieldConfigs FieldConfiguration[]
+}
+
+model Profile {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id])
+  timezone          String   @default("Asia/Tokyo")
+  defaultCurrency   String   @default("JPY")
+  secondaryCurrency String   @default("IDR")
+  salaryDate        Int      @default(10)
+  avatarUrl         String?  @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now()) @updatedAt
+}
+
+model Account {
+  id              String      @id @default(uuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  type            AccountType
+  currency        String      @default("JPY")
+  currentBalance  Decimal     @default(0) @db.Decimal(18, 4)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  sourceTransactions      Transaction[] @relation("SourceAccount")
+  destinationTransactions Transaction[] @relation("DestinationAccount")
+
+  @@index([userId])
+}
+
+model Category {
+  id           String        @id @default(uuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  icon         String?
+  transactions Transaction[]
+
+  @@index([userId])
+}
+
+model Transaction {
+  id                   String          @id @default(uuid())
+  userId               String
+  user                 User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type                 TransactionType
+  date                 DateTime
+  time                 String
+  merchant             String?
+  amount               Decimal         @db.Decimal(18, 4)
+  fee                  Decimal         @default(0) @db.Decimal(18, 4)
+  total                Decimal         @db.Decimal(18, 4)
+  currency             String          @default("JPY")
+  exchangeRate         Decimal         @default(1.0) @db.Decimal(18, 6)
+  convertedAmount      Decimal         @db.Decimal(18, 4)
+  convertedCurrency    String          @default("IDR")
+
+  sourceAccountId      String?
+  sourceAccount        Account?        @relation("SourceAccount", fields: [sourceAccountId], references: [id])
+  destinationAccountId String?
+  destinationAccount   Account?        @relation("DestinationAccount", fields: [destinationAccountId], references: [id])
+  
+  categoryId           String?
+  category             Category?       @relation(fields: [categoryId], references: [id])
+
+  description          String?
+  notes                String?
+  receiptUrl           String?
+  tags                 String[]        @default([])
+  customFields         Json?           @default("{}")
+  syncStatus           String          @default("SYNCED")
+
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  @@index([userId, date])
+}
+
+model FieldConfiguration {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fieldKey   String
+  label      String
+  fieldType  String
+  isEnabled  Boolean  @default(true)
+  isRequired Boolean  @default(false)
+  isVisible  Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  isCustom   Boolean  @default(false)
+
+  @@unique([userId, fieldKey])
+}
+
+model ExchangeRate {
+  id        String   @id @default(uuid())
+  from      String   // "JPY"
+  to        String   // "IDR"
+  rate      Decimal  @db.Decimal(18, 6)
+  date      DateTime @default(now()) // Tanggal kurs berlaku
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([from, to, date])
+  @@index([from, to])
+}
+
